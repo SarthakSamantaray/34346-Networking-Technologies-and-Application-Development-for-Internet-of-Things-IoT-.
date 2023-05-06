@@ -1,0 +1,181 @@
+#include <Servo.h>
+#include <rn2xx3.h>
+#include <SoftwareSerial.h>
+
+SoftwareSerial mySerial(4, 5); // RX, TX !! labels on relay board is swapped !!
+rn2xx3 myLora(mySerial);
+
+Servo servo1;
+Servo servo2;
+
+int ldrPin1 = A0; // LDR 1 connected to analog pin A0
+int ldrPin2 = A1; // LDR 2 connected to analog pin A1
+
+int prev1 = 1023;
+int prev2 = 1023;
+int threshold = 10;
+
+int servo1Pos = 0;
+int servo2Pos = 0;
+
+void setup() {
+    Serial.begin(9600);
+    mySerial.begin(57600);
+
+    pinMode(ldrPin1, INPUT);
+    pinMode(ldrPin2, INPUT);
+
+    servo1.attach(8); // servo 1 connected to digital pin 9
+    servo2.attach(9); // servo 2 connected to digital pin 10
+
+    servo1.write(90);
+    servo2.write(90);
+
+    delay(1000);
+
+   initialize_radio();
+}
+
+void loop() {
+
+    int movement = 0;
+    int vect[12];
+
+    while(movement<=12) { 
+        int ldrValR = analogRead(ldrPin1);
+        int ldrValL = analogRead(ldrPin2);
+
+        vect[movement] = abs(ldrValR - ldrValL); // Get the different between LDRs 
+
+        movement = movement + 1;
+
+        if(movement == 1) {
+            servo1.write(135); // move right
+            servo1Pos = 135;
+        }else if(movement == 2) {
+            servo1.write(90);
+            servo2.write(135);
+            servo1Pos = 90;
+            servo2Pos = 135;
+        }else if(movement == 3) {
+            servo1.write(135); // move up (right and up)
+            servo1Pos = 135;
+        }else if(movement == 4) {
+            servo1.write(180); // move down (right and down)
+            servo1Pos = 180;
+        }else if(movement == 5) {
+            servo1.write(135);
+            servo2.write(180);
+            servo1Pos = 135;
+            servo2Pos = 180;
+        }else if(movement == 6) {
+            servo1.write(180);
+            servo2.write(180);
+            servo1Pos = 180;
+            servo2Pos = 180;
+        }else if(movement == 7) {
+            servo1.write(90);
+            servo2.write(45);
+            servo1Pos = 90;
+            servo2Pos = 45;
+        }else if(movement == 8) {
+            servo1.write(45);
+            servo2.write(90);
+            servo1Pos = 45;
+            servo2Pos = 90;
+        }else if(movement == 9) {
+         	servo2.write(45);
+         	servo2Pos = 45; 
+        }else if(movement == 10) {
+         	servo2.write(0); 
+         	servo2Pos =0; 
+        }else if(movement ==11 ) { 
+          	servo1.write(0); 
+          	servo2.write(45);  
+          	servo1Pos=0; 
+          	servo2Pos=45; 
+      	}else if(movement ==12 ) { 
+          	servo1.write(0);  
+          	servo2.write(0);  
+          	servo1Pos=0; 
+          	servo2Pos=0; 
+      	}
+
+      Serial.print("Servo 1 position: ");
+      Serial.println(servo1Pos);
+      Serial.print("Servo 2 position: ");
+      Serial.println(servo2Pos);
+
+      delay(1000);
+
+    }
+
+    int min = 10000;
+    int val = 10000;
+    int i = 0;
+    while(i<=12) {
+
+      if(vect[i] <= val) {
+          min = i;
+          val = vect[i];
+      }
+      i = i + 1;
+    }
+
+    String loraMessage = "Light value R: " + String(analogRead(ldrPin1)) + ", Light value L: " + String(analogRead(ldrPin2)) + ", Servo 1 angle: " + String(servo1Pos) + ", Servo 2 angle: " + String(servo2Pos) + ", Movement: " + String(min);
+
+    myLora.tx(loraMessage);
+
+    Serial.println("Transmitted Lora message:");
+    Serial.println(loraMessage);
+
+    delay(1000000); // Add delay to avoid rapid oscillations (1000 secs)
+
+    String str = myLora.getRx(); 
+
+    if(str != "") {
+        Serial.println("Received Lora message:");
+        Serial.println(str);
+        
+        String loraMessageReceived = "Servo 1 angle: " + String(servo1.read()) + ", Servo 2 angle: " + String(servo2.read()) + ", Light value R: " + str.substring(17, str.indexOf(',')) + ", Light value L: " + str.substring(str.indexOf("Light value L: ") + 15, str.lastIndexOf(','));
+        
+        myLora.tx(loraMessageReceived);
+        
+        Serial.println("Transmitted Lora message:");
+        Serial.println(loraMessageReceived);
+    }
+}
+
+void initialize_radio() {
+
+  delay(100); //wait for the RN2xx3's startup message
+  mySerial.flush();
+
+  //check communication with radio
+  String hweui = myLora.hweui();
+  
+  while(hweui.length() != 16) {
+    Serial.println("Communication with RN2xx3 unsuccessful. Power cycle the board.");
+    Serial.println(hweui);
+    delay(10000);
+    hweui = myLora.hweui();
+  }
+
+  Serial.println("When using OTAA, register this DevEUI: ");
+  Serial.println(hweui);
+  Serial.println("RN2xx3 firmware version:");
+  Serial.println(myLora.sysver());
+
+  bool join_result = false;
+
+//OTAA: initOTAA(String AppEUI, String AppKey);
+join_result = myLora.initOTAA("6081F99806EEB092", "4558FD4E96F3AEACC9AC9E055142EBE6");
+
+while(!join_result) {
+    Serial.println("Unable to join. Are your keys correct, and do you have TTN coverage?");
+    delay(60000); //delay a minute before retry
+    join_result = myLora.init();
+}
+
+Serial.println("Successfully joined TTN");
+}
