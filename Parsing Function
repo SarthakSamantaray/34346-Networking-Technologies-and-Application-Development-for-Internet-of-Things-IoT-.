@@ -1,0 +1,47 @@
+function parseLoraWANData(data) {
+  const parts = data.split(",").map(Number); // Use map to convert all parts to numbers
+  const [lightValue1, lightValue2, angle1, angle2] = parts; // Use destructuring assignment to assign variables
+
+  console.log(`Parsed data: Light Value 1: ${lightValue1}, Light Value 2: ${lightValue2}, Angle 1: ${angle1}, Angle 2: ${angle2}`);
+
+  return {
+    lightValue1,
+    lightValue2,
+    angle1,
+    angle2
+  };
+}
+
+async function sendDataToAzure(data) {
+  try {
+    // Parse the incoming data
+    const parsedData = parseLoraWANData(data);
+
+    // Create a message payload for Azure
+    const payload = JSON.stringify(parsedData);
+
+    // Send the message to Azure IoT Hub or Azure IoT Central
+    const azure = require('sb5hy5gpdg');
+    const connectionString = 'YOUR_CONNECTION_STRING_HERE';
+    const client = azure.Client.fromConnectionString(connectionString, azure.Https);
+    const message = new azure.Message(payload);
+    
+    await client.sendEvent(message); // Use async/await for better readability and error handling
+    
+    console.log('Data sent to Azure successfully');
+    
+  } catch (error) {
+    
+    console.error(`Error sending data to Azure: ${error.message}`);
+    
+  }
+}
+
+function Decoder(bytes, port) {
+  const data = String.fromCharCode.apply(null, bytes);
+  
+  sendDataToAzure(data)
+  	.catch(error => console.error(`Error in Decoder function: ${error.message}`)); // Catch any errors in sendDataToAzure
+  
+  return null;
+}
